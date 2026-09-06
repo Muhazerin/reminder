@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#4f46e5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="stylesheet" href="/style.css">
+  <title>Remindly</title>
+</head>
+<body>
+
+  <!-- Login -->
+  <section id="login" class="screen">
+    <div class="card login-card">
+      <div class="logo">R</div>
+      <h1>Remindly</h1>
+      <p class="muted">Your reminders, pushed to your phone.</p>
+      <input id="password" type="password" placeholder="App password" autocomplete="current-password">
+      <button id="loginBtn" class="primary">Sign in</button>
+      <p id="loginErr" class="err" hidden></p>
+    </div>
+  </section>
+
+  <!-- App -->
+  <section id="app" class="screen" hidden>
+    <header>
+      <h1>Remindly</h1>
+      <div class="head-actions">
+        <span id="pushState" class="dot" title="Push: not registered"></span>
+        <button id="testBtn" class="ghost" hidden>Test ping</button>
+        <button id="logoutBtn" class="ghost">Log out</button>
+      </div>
+    </header>
+
+    <div id="iosBanner" class="banner" hidden>
+      iPhone? Open Safari → Share <b>→ Add to Home Screen</b>, then open Remindly from your home screen to allow notifications.
+    </div>
+    <div id="notifBanner" class="banner" hidden>
+      Notifications are off. <button id="enableNotif" class="linkish">Enable notifications</button>
+    </div>
+
+    <form id="addForm" autocomplete="off">
+      <input id="fTitle" type="text" placeholder="What should I remind you about?" maxlength="200" required>
+      <div class="row">
+        <input id="fDue" type="datetime-local" required>
+        <select id="fRepeat">
+          <option value="">Once</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+      <input id="fNote" type="text" placeholder="Note (optional)" maxlength="500">
+      <button type="submit" class="primary full">Add reminder</button>
+    </form>
+
+    <nav class="tabs">
+      <button id="tabPending" class="tab active">Upcoming</button>
+      <button id="tabDone" class="tab">Done</button>
+    </nav>
+
+    <ul id="list"></ul>
+    <p id="empty" class="muted center" hidden>Nothing here yet.</p>
+    <footer class="muted center small">Remindly · reminders fire from the server, even when this page is closed.</footer>
+  </section>
+
+  <script src="/app.js"></script>
+</body>
+</html>
