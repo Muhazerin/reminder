@@ -1,10 +1,14 @@
 """Remindly — FastAPI app. Single-user password auth for now; schema and user_id
-scoping are already multi-user ready (swap auth for real accounts later)."""
+scoping are already multi-user ready (swap auth for real accounts later).
+
+Vocabulary: see docs/glossary.md. Handlers are named <verb>_<resource> with the
+same verb the db layer uses (create/update/delete/list/get), so the API and the
+data layer speak one language."""
 import hashlib
 import hmac
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal, Optional
 from zoneinfo import ZoneInfo
@@ -25,7 +29,7 @@ LOCAL_USER = "local"  # single hard-coded user until real accounts exist
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init_db()
-    db.ensure_user(LOCAL_USER)
+    db.upsert_user(LOCAL_USER)
     stop = scheduler.start(interval=20)
     yield
     stop.set()
@@ -49,31 +53,31 @@ def require_auth(authorization: str = Header(default="")):
 
 class LoginIn(BaseModel):
     password: str
-    tz: str = "UTC"
+    timezone: str = "UTC"
 
 
 @app.post("/api/login")
 def login(body: LoginIn):
     if not hmac.compare_digest(body.password, APP_PASSWORD):
         raise HTTPException(401, "wrong password")
-    tz = db.ensure_user(LOCAL_USER, body.tz)
-    return {"token": _expected_token(), "tz": tz}
+    timezone = db.upsert_user(LOCAL_USER, body.timezone)
+    return {"token": _expected_token(), "timezone": timezone}
 
 
 @app.get("/api/me")
-def me(user=Depends(require_auth)):
-    tz = db.get_user_tz(user) or db.ensure_user(user)
-    return {"user_id": user, "tz": tz}
+def get_me(user=Depends(require_auth)):
+    timezone = db.get_user_timezone(user) or db.upsert_user(user)
+    return {"user_id": user, "timezone": timezone}
 
 
 class MeIn(BaseModel):
-    tz: str
+    timezone: str
 
 
 @app.put("/api/me")
 def update_me(body: MeIn, user=Depends(require_auth)):
-    tz = db.ensure_user(user, body.tz)
-    return {"tz": tz}
+    timezone = db.upsert_user(user, body.timezone)
+    return {"timezone": timezone}
 
 
 # ------------------------------------------------------------- reminders
@@ -82,34 +86,34 @@ class ReminderIn(BaseModel):
     due_local: str  # naive local wall time, e.g. 2026-09-06T21:30 (user's clock)
     note: str = ""
     repeat: Literal["", "daily", "weekly", "monthly"] = ""
-    tz: str = "UTC"
+    timezone: str = "UTC"
 
 
-def _local_to_utc(due_local: str, tz: str) -> str:
+def _local_to_utc(due_local: str, timezone: str) -> str:
     try:
         naive = datetime.fromisoformat(due_local)
     except ValueError:
         raise HTTPException(422, "due_local must be ISO like 2026-09-06T21:30")
     try:
-        tzinfo = ZoneInfo(tz)
+        tzinfo = ZoneInfo(timezone)
     except Exception:
-        raise HTTPException(422, f"unknown timezone: {tz}")
-    return naive.replace(tzinfo=tzinfo).astimezone(timezone.utc).isoformat()
+        raise HTTPException(422, f"unknown timezone: {timezone}")
+    return naive.replace(tzinfo=tzinfo).astimezone(UTC).isoformat()
 
 
 @app.get("/api/reminders")
-def reminders(status: Literal["pending", "done", "all"] = "all", user=Depends(require_auth)):
+def list_reminders(status: Literal["pending", "done", "all"] = "all", user=Depends(require_auth)):
     return {"reminders": db.list_reminders(user, None if status == "all" else status)}
 
 
 @app.post("/api/reminders")
-def add_reminder(body: ReminderIn, user=Depends(require_auth)):
+def create_reminder(body: ReminderIn, user=Depends(require_auth)):
     title = body.title.strip()
     if not title:
         raise HTTPException(422, "title required")
-    due_utc = _local_to_utc(body.due_local, body.tz)
+    due_utc = _local_to_utc(body.due_local, body.timezone)
     r = db.create_reminder(
-        user, title, body.note.strip(), body.due_local, body.repeat, body.tz, due_utc
+        user, title, body.note.strip(), body.due_local, body.repeat, body.timezone, due_utc
     )
     return {"reminder": r}
 
@@ -119,23 +123,23 @@ class ReminderPatch(BaseModel):
     note: Optional[str] = None
     due_local: Optional[str] = None
     repeat: Optional[Literal["", "daily", "weekly", "monthly"]] = None
-    tz: Optional[str] = None
+    timezone: Optional[str] = None
     status: Optional[Literal["pending", "done"]] = None
 
 
 @app.patch("/api/reminders/{rid}")
-def edit_reminder(rid: int, body: ReminderPatch, user=Depends(require_auth)):
+def update_reminder(rid: int, body: ReminderPatch, user=Depends(require_auth)):
     fields = {}
-    for f in ("title", "note", "repeat", "tz", "status"):
+    for f in ("title", "note", "repeat", "timezone", "status"):
         v = getattr(body, f)
         if v is not None:
             fields[f] = v
     if body.due_local is not None:
-        tz = body.tz or (db.get_reminder(rid, user) or {}).get("tz") or "UTC"
-        fields["due_utc"] = _local_to_utc(body.due_local, tz)
-        fields["anchor"] = body.due_local
-        if body.tz is not None:
-            fields["tz"] = body.tz
+        timezone = body.timezone or (db.get_reminder(rid, user) or {}).get("timezone") or "UTC"
+        fields["due_utc"] = _local_to_utc(body.due_local, timezone)
+        fields["due_local"] = body.due_local
+        if body.timezone is not None:
+            fields["timezone"] = body.timezone
     if not fields:
         raise HTTPException(422, "nothing to update")
     r = db.update_reminder(rid, user, fields)
@@ -145,7 +149,7 @@ def edit_reminder(rid: int, body: ReminderPatch, user=Depends(require_auth)):
 
 
 @app.delete("/api/reminders/{rid}")
-def remove_reminder(rid: int, user=Depends(require_auth)):
+def delete_reminder(rid: int, user=Depends(require_auth)):
     if not db.delete_reminder(rid, user):
         raise HTTPException(404, "not found")
     return {"ok": True}
@@ -156,7 +160,7 @@ class SnoozeIn(BaseModel):
 
 
 @app.post("/api/reminders/{rid}/snooze")
-def snooze(rid: int, body: SnoozeIn, user=Depends(require_auth)):
+def snooze_reminder(rid: int, body: SnoozeIn, user=Depends(require_auth)):
     r = db.get_reminder(rid, user)
     if not r:
         raise HTTPException(404, "not found")
@@ -164,35 +168,35 @@ def snooze(rid: int, body: SnoozeIn, user=Depends(require_auth)):
         raise HTTPException(409, "only pending reminders can be snoozed")
     if body.minutes < 1:
         raise HTTPException(422, "minutes must be >= 1")
-    new_due = datetime.now(timezone.utc) + timedelta(minutes=body.minutes)
+    new_due = datetime.now(UTC) + timedelta(minutes=body.minutes)
     r = db.update_reminder(rid, user, {"due_utc": new_due.isoformat()})
     return {"reminder": r}
 
 
 # -------------------------------------------------------------- web push
 @app.get("/api/push/vapid-public-key")
-def vapid_key(user=Depends(require_auth)):
-    return {"key": push.public_key_b64()}
+def get_vapid_public_key(user=Depends(require_auth)):
+    return {"key": push.vapid_public_key()}
 
 
-class SubIn(BaseModel):
+class SubscribeIn(BaseModel):
     endpoint: str
     keys: dict
 
 
 @app.post("/api/push/subscribe")
-def subscribe(body: SubIn, user=Depends(require_auth)):
-    db.add_device(user, body.endpoint, body.keys.get("p256dh", ""), body.keys.get("auth", ""))
+def subscribe_device(body: SubscribeIn, user=Depends(require_auth)):
+    db.upsert_device(user, body.endpoint, body.keys.get("p256dh", ""), body.keys.get("auth", ""))
     return {"ok": True}
 
 
-class UnsubIn(BaseModel):
+class UnsubscribeIn(BaseModel):
     endpoint: str
 
 
 @app.post("/api/push/unsubscribe")
-def unsubscribe(body: UnsubIn, user=Depends(require_auth)):
-    db.remove_device(body.endpoint)
+def unsubscribe_device(body: UnsubscribeIn, user=Depends(require_auth)):
+    db.delete_device(body.endpoint)
     return {"ok": True}
 
 
@@ -201,9 +205,9 @@ class TestIn(BaseModel):
 
 
 @app.post("/api/push/test")
-def test_push(body: TestIn, user=Depends(require_auth)):
+def send_test_notification(body: TestIn, user=Depends(require_auth)):
     devices = db.list_devices(user)
-    push.send_all(
+    push.notify_devices(
         devices,
         {"title": body.title, "body": "Push is working ✔", "tag": "remindly-test", "data": {"url": "/"}},
     )

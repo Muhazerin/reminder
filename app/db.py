@@ -1,9 +1,13 @@
 """SQLite persistence layer. One connection per operation (WAL mode) so the
-API threads and the scheduler thread never share a connection."""
+API threads and the scheduler thread never share a connection.
+
+Vocabulary: see docs/glossary.md — column names are the canonical terms
+(`due_local`, `due_utc`, `timezone`), functions use the CRUD verbs
+(create/get/list/update/delete/upsert)."""
 import os
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 DATA_DIR = os.environ.get(
     "DATA_DIR",
@@ -15,7 +19,7 @@ _lock = threading.Lock()
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     user_id    TEXT PRIMARY KEY,
-    tz         TEXT NOT NULL DEFAULT 'UTC',
+    timezone   TEXT NOT NULL DEFAULT 'UTC',
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS reminders (
@@ -23,9 +27,9 @@ CREATE TABLE IF NOT EXISTS reminders (
     user_id    TEXT NOT NULL,          -- multi-user ready: everything is scoped by user
     title      TEXT NOT NULL,
     note       TEXT NOT NULL DEFAULT '',
-    anchor     TEXT,                   -- naive local wall time of first due (repeat base)
+    due_local  TEXT,                   -- naive local wall time of first due (repeat base)
     repeat     TEXT NOT NULL DEFAULT '',  -- '' | 'daily' | 'weekly' | 'monthly'
-    tz         TEXT NOT NULL DEFAULT 'UTC',
+    timezone   TEXT NOT NULL DEFAULT 'UTC',
     due_utc    TEXT NOT NULL,          -- next fire time, UTC ISO
     status     TEXT NOT NULL DEFAULT 'pending',  -- pending | done
     created_at TEXT NOT NULL,
@@ -44,7 +48,7 @@ CREATE TABLE IF NOT EXISTS devices (
 
 
 def utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def connect():
@@ -55,32 +59,51 @@ def connect():
     return conn
 
 
+def _column_names(conn, table: str) -> set:
+    return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _migrate_old_columns(conn) -> None:
+    """Rename columns created under the old vocabulary (pre-glossary) so an
+    existing database keeps its data: tz -> timezone, anchor -> due_local."""
+    rem = _column_names(conn, "reminders")
+    if "tz" in rem and "timezone" not in rem:
+        conn.execute("ALTER TABLE reminders RENAME COLUMN tz TO timezone")
+    if "anchor" in rem and "due_local" not in rem:
+        conn.execute("ALTER TABLE reminders RENAME COLUMN anchor TO due_local")
+    usr = _column_names(conn, "users")
+    if "tz" in usr and "timezone" not in usr:
+        conn.execute("ALTER TABLE users RENAME COLUMN tz TO timezone")
+
+
 def init_db():
     with _lock:
         with connect() as c:
             c.executescript(SCHEMA)
+            _migrate_old_columns(c)
 
 
 # ---------------------------------------------------------------- users
-def ensure_user(user_id: str, tz: str = "UTC") -> str:
-    """Create the user if missing; update tz if provided. Returns effective tz."""
+def upsert_user(user_id: str, timezone: str = "UTC") -> str:
+    """Create the user if missing; update their timezone if provided.
+    Returns the effective timezone."""
     with _lock:
         with connect() as c:
             c.execute(
-                "INSERT OR IGNORE INTO users(user_id, tz, created_at) VALUES(?,?,?)",
-                (user_id, tz, utcnow()),
+                "INSERT OR IGNORE INTO users(user_id, timezone, created_at) VALUES(?,?,?)",
+                (user_id, timezone, utcnow()),
             )
-            row = c.execute("SELECT tz FROM users WHERE user_id=?", (user_id,)).fetchone()
-            if tz and tz != row["tz"]:
-                c.execute("UPDATE users SET tz=? WHERE user_id=?", (tz, user_id))
-                row = c.execute("SELECT tz FROM users WHERE user_id=?", (user_id,)).fetchone()
-            return row["tz"]
+            row = c.execute("SELECT timezone FROM users WHERE user_id=?", (user_id,)).fetchone()
+            if timezone and timezone != row["timezone"]:
+                c.execute("UPDATE users SET timezone=? WHERE user_id=?", (timezone, user_id))
+                row = c.execute("SELECT timezone FROM users WHERE user_id=?", (user_id,)).fetchone()
+            return row["timezone"]
 
 
-def get_user_tz(user_id: str):
+def get_user_timezone(user_id: str):
     with connect() as c:
-        row = c.execute("SELECT tz FROM users WHERE user_id=?", (user_id,)).fetchone()
-    return row["tz"] if row else None
+        row = c.execute("SELECT timezone FROM users WHERE user_id=?", (user_id,)).fetchone()
+    return row["timezone"] if row else None
 
 
 # ------------------------------------------------------------- reminders
@@ -88,13 +111,13 @@ def row_to_dict(r) -> dict:
     return {k: r[k] for k in r.keys()}
 
 
-def create_reminder(user_id, title, note, anchor, repeat, tz, due_utc) -> dict:
+def create_reminder(user_id, title, note, due_local, repeat, timezone, due_utc) -> dict:
     with _lock:
         with connect() as c:
             cur = c.execute(
-                "INSERT INTO reminders(user_id,title,note,anchor,repeat,tz,due_utc,status,created_at)"
+                "INSERT INTO reminders(user_id,title,note,due_local,repeat,timezone,due_utc,status,created_at)"
                 " VALUES(?,?,?,?,?,?,?, 'pending', ?)",
-                (user_id, title, note, anchor, repeat, tz, due_utc, utcnow()),
+                (user_id, title, note, due_local, repeat, timezone, due_utc, utcnow()),
             )
             r = c.execute("SELECT * FROM reminders WHERE id=?", (cur.lastrowid,)).fetchone()
             return row_to_dict(r)
@@ -150,7 +173,8 @@ def delete_reminder(rid: int, user_id: str) -> bool:
             return cur.rowcount > 0
 
 
-def due_pending(now_iso: str = None):
+def list_due_reminders(now_iso: str = None):
+    """Reminders that are pending and whose due_utc has passed (fire-late is fine)."""
     now_iso = now_iso or utcnow()
     with connect() as c:
         rows = c.execute(
@@ -161,7 +185,8 @@ def due_pending(now_iso: str = None):
 
 
 # --------------------------------------------------------------- devices
-def add_device(user_id, endpoint, p256dh, auth_secret):
+def upsert_device(user_id, endpoint, p256dh, auth_secret):
+    """Register (or re-register) a device for push delivery."""
     with _lock:
         with connect() as c:
             c.execute(
@@ -172,7 +197,7 @@ def add_device(user_id, endpoint, p256dh, auth_secret):
             )
 
 
-def remove_device(endpoint: str):
+def delete_device(endpoint: str):
     with _lock:
         with connect() as c:
             c.execute("DELETE FROM devices WHERE endpoint=?", (endpoint,))

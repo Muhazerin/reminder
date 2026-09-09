@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 BASE = "http://127.0.0.1:8123"
 PASSWORD = "test1234"
-TZ = "Asia/Singapore"
+TIMEZONE = "Asia/Singapore"
 failures = []
 
 
@@ -44,7 +44,7 @@ def check(name, cond, detail=""):
 
 
 def local_now(seconds_ahead=0):
-    n = datetime.now(ZoneInfo(TZ)).replace(tzinfo=None) + timedelta(seconds=seconds_ahead)
+    n = datetime.now(ZoneInfo(TIMEZONE)).replace(tzinfo=None) + timedelta(seconds=seconds_ahead)
     return n.strftime("%Y-%m-%dT%H:%M:%S")
 
 
@@ -55,20 +55,20 @@ check("GET /health -> 200", s == 200, s)
 print("2. auth")
 s, _ = req("POST", "/api/login", {"password": "wrong"})
 check("wrong password -> 401", s == 401, s)
-s, body = req("POST", "/api/login", {"password": PASSWORD, "tz": TZ})
+s, body = req("POST", "/api/login", {"password": PASSWORD, "timezone": TIMEZONE})
 check("login -> 200 + token", s == 200 and body.get("token"), body)
 TOKEN = body["token"]
 s, body = req("GET", "/api/reminders", token=TOKEN)
 check("unauth-less list is 401 (bad token check)", s == 200, s)
 
 print("3. create reminders")
-s, b1 = req("POST", "/api/reminders", {"title": "one-shot due soon", "due_local": local_now(6), "tz": TZ}, TOKEN)
+s, b1 = req("POST", "/api/reminders", {"title": "one-shot due soon", "due_local": local_now(6), "timezone": TIMEZONE}, TOKEN)
 check("create one-shot -> 200", s == 200 and b1.get("reminder", {}).get("status") == "pending", b1)
 id1 = b1["reminder"]["id"]
-s, b2 = req("POST", "/api/reminders", {"title": "daily due soon", "due_local": local_now(5), "repeat": "daily", "tz": TZ}, TOKEN)
+s, b2 = req("POST", "/api/reminders", {"title": "daily due soon", "due_local": local_now(5), "repeat": "daily", "timezone": TIMEZONE}, TOKEN)
 check("create daily -> 200", s == 200, b2)
 id2 = b2["reminder"]["id"]
-s, b3 = req("POST", "/api/reminders", {"title": "future + snooze", "due_local": local_now(1800), "tz": TZ}, TOKEN)
+s, b3 = req("POST", "/api/reminders", {"title": "future + snooze", "due_local": local_now(1800), "timezone": TIMEZONE}, TOKEN)
 check("create far-future -> 200", s == 200, b3)
 id3 = b3["reminder"]["id"]
 

@@ -2,7 +2,7 @@
 "use strict";
 
 const $ = (s) => document.querySelector(s);
-const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 const state = {
   token: localStorage.getItem("remindly_token") || "",
   filter: "pending",
@@ -58,7 +58,7 @@ $("#loginBtn").onclick = async () => {
   const pw = $("#password").value;
   if (!pw) return;
   try {
-    const r = await api("/api/login", { method: "POST", body: { password: pw, tz: TZ } });
+    const r = await api("/api/login", { method: "POST", body: { password: pw, timezone: TIMEZONE } });
     state.token = r.token;
     localStorage.setItem("remindly_token", r.token);
     $("#loginErr").hidden = true;
@@ -169,7 +169,7 @@ $("#addForm").onsubmit = async (ev) => {
   try {
     await api("/api/reminders", {
       method: "POST",
-      body: { title, note: $("#fNote").value.trim(), due_local: due, repeat: $("#fRepeat").value, tz: TZ },
+      body: { title, note: $("#fNote").value.trim(), due_local: due, repeat: $("#fRepeat").value, timezone: TIMEZONE },
     });
     $("#fTitle").value = "";
     $("#fNote").value = "";
