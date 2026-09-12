@@ -82,6 +82,7 @@ def fire_reminder(rem: dict):
 
 
 def tick():
+    """One scheduler pass: fire every due reminder (failures are logged, not fatal)."""
     for rem in db.list_due_reminders():
         try:
             fire_reminder(rem)
@@ -90,6 +91,7 @@ def tick():
 
 
 def run_loop(interval: float = 20, stop: threading.Event = None):
+    """Call tick() every interval seconds until the stop event is set."""
     while not (stop and stop.is_set()):
         try:
             tick()
@@ -99,6 +101,7 @@ def run_loop(interval: float = 20, stop: threading.Event = None):
 
 
 def start(interval: float = 20) -> threading.Event:
+    """Start the scheduler as a daemon thread; returns the event that stops it."""
     stop = threading.Event()
     t = threading.Thread(target=run_loop, args=(interval, stop), daemon=True, name="reminder-scheduler")
     t.start()

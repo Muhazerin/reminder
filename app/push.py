@@ -15,10 +15,12 @@ log = logging.getLogger("push")
 
 
 def _b64url(data: bytes) -> str:
+    """URL-safe base64 without padding — the format VAPID keys travel in."""
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
 def _import_serialization():
+    """Import cryptography's serialization module lazily (kept out of import time)."""
     from cryptography.hazmat.primitives import serialization
     return serialization
 
@@ -57,6 +59,7 @@ def vapid_public_key() -> str:
 
 
 def _subject() -> str:
+    """The VAPID "sub" claim: a contact address the push service can reach you at."""
     return os.environ.get("VAPID_MAILTO", "mailto:admin@example.com")
 
 
