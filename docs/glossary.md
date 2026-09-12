@@ -89,8 +89,10 @@ machine's deadline.**
 ## Retired names (old → new)
 
 Everything below used to have a *different* name somewhere in the codebase.
-They now all speak the canonical term on the right. (DB columns are migrated
-automatically at startup; see `_migrate_old_columns` in `app/db.py`.)
+They now all speak the canonical term on the right. There is **no schema
+migration yet**: if you have a database created before this change, delete the
+`data/` folder (dev-local, gitignored) and let the app recreate it. A real
+migration story comes after the first deploy.
 
 | Retired name | Where it lived | Canonical term now |
 |---|---|---|

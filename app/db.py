@@ -59,28 +59,10 @@ def connect():
     return conn
 
 
-def _column_names(conn, table: str) -> set:
-    return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
-
-
-def _migrate_old_columns(conn) -> None:
-    """Rename columns created under the old vocabulary (pre-glossary) so an
-    existing database keeps its data: tz -> timezone, anchor -> due_local."""
-    rem = _column_names(conn, "reminders")
-    if "tz" in rem and "timezone" not in rem:
-        conn.execute("ALTER TABLE reminders RENAME COLUMN tz TO timezone")
-    if "anchor" in rem and "due_local" not in rem:
-        conn.execute("ALTER TABLE reminders RENAME COLUMN anchor TO due_local")
-    usr = _column_names(conn, "users")
-    if "tz" in usr and "timezone" not in usr:
-        conn.execute("ALTER TABLE users RENAME COLUMN tz TO timezone")
-
-
 def init_db():
     with _lock:
         with connect() as c:
             c.executescript(SCHEMA)
-            _migrate_old_columns(c)
 
 
 # ---------------------------------------------------------------- users
