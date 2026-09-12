@@ -6,6 +6,10 @@ is used everywhere — database columns, API JSON fields, function names,
 comments, and this document. If you meet a term that is not here (or a term
 that has several names), that is a bug: fix it here first, then in the code.
 
+> This document holds **domain language only**. Engineering conventions —
+> docstrings, commit style, the branch/PR workflow, how to run the tests —
+> live in [`AGENTS.md`](../AGENTS.md).
+
 > Naming rules of thumb
 > - **One concept = one word.** No near-synonyms (`add` vs `create`, `tz` vs `timezone`).
 > - **DB layer and API speak the same verbs**: `create / list / get / update / delete / upsert`.

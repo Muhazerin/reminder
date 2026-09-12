@@ -34,6 +34,7 @@ app/            FastAPI backend (db, scheduler, web-push, routes)
 static/         PWA: index.html, app.js, style.css, sw.js, manifest, icons
 scripts/        gen_icons.py (regenerate PWA icons), smoke_test.py (API tests)
 docs/           glossary.md — the project's vocabulary (Ubiquitous Language)
+AGENTS.md       instructions for AI agents working in this repo
 Dockerfile, docker-compose.yml, Caddyfile   deployment
 ```
 
