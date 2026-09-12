@@ -72,9 +72,14 @@ def login(body: LoginIn):
     return {"token": _expected_token(), "timezone": timezone}
 
 
+# Documented glossary exception: "me" is the widespread, accepted REST idiom
+# for the currently authenticated user (GitHub and GitLab use /user for the same
+# idea). Hence the path /api/me and handlers named after it — the one place that
+# does not follow the <verb>_<resource> rule. See the "Documented exceptions"
+# section in docs/glossary.md.
 @app.get("/api/me")
 def get_me(user=Depends(require_auth)):
-    """Return the current user id and their timezone."""
+    """Return the currently authenticated user's id and timezone (`me`)."""
     timezone = db.get_user_timezone(user) or db.upsert_user(user)
     return {"user_id": user, "timezone": timezone}
 
@@ -85,7 +90,7 @@ class MeIn(BaseModel):
 
 @app.put("/api/me")
 def update_me(body: MeIn, user=Depends(require_auth)):
-    """Set the user's timezone and return it."""
+    """Set the currently authenticated user's timezone (`me`) and return it."""
     timezone = db.upsert_user(user, body.timezone)
     return {"timezone": timezone}
 

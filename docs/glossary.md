@@ -15,6 +15,9 @@ that has several names), that is a bug: fix it here first, then in the code.
 > - **DB layer and API speak the same verbs**: `create / list / get / update / delete / upsert`.
 > - **HTTP handlers are named `<verb>_<resource>`** (`create_reminder`,
 >   `delete_device`) and call the same verb in the db layer.
+> - **Documented exceptions live in the section below.** A deviation is only
+>   acceptable when it is written down there — an undocumented near-synonym is
+>   still a bug.
 > - **Wire-format names are kept as-is** where the browser push protocol
 >   dictates them (`endpoint`, `p256dh`, `auth`) — renaming those would lie
 >   about the protocol.
@@ -87,6 +90,29 @@ machine's deadline.**
 | **Docker Compose** | How the app + Caddy are packaged and started on the VPS. |
 | **DuckDNS** | Free dynamic-DNS provider giving the app a stable `*.duckdns.org` name (pushes require a stable HTTPS origin). |
 | **SQLite / WAL** | The database and its journal mode; one connection per operation so API and scheduler threads never share a connection. |
+
+---
+
+## Documented exceptions
+
+Rules are only useful if the exceptions are written down. Each entry here is a
+deliberate, accepted deviation — not a synonym to be "fixed" later.
+
+### `me` — the currently authenticated user
+
+`me` is a **widespread, accepted REST idiom** for the currently authenticated
+user: the endpoint answers "the record belonging to whoever is making this
+request." GitHub and GitLab express the same idea as `/user`, and many other
+APIs use `/me`. The benefit is that the client never needs to know or send its
+own user id — which stays true whether the app has one user or many.
+
+- API paths: `GET /api/me`, `PUT /api/me`
+- Handlers: `get_me`, `update_me` — named after the path, so they are the one
+  place that does **not** follow the `<verb>_<resource>` naming rule
+- Everywhere else the domain word is **User**: `upsert_user`,
+  `get_user_timezone`, and the response field `user_id`
+
+There is a pointer comment next to the handlers in `app/main.py`.
 
 ---
 
