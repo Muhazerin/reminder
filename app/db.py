@@ -48,10 +48,12 @@ CREATE TABLE IF NOT EXISTS devices (
 
 
 def utcnow() -> str:
+    """Current time as a UTC ISO string — the format of every timestamp column."""
     return datetime.now(UTC).isoformat()
 
 
 def connect():
+    """Open a fresh SQLite connection (WAL mode, created for one operation only)."""
     os.makedirs(DATA_DIR, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
@@ -60,6 +62,7 @@ def connect():
 
 
 def init_db():
+    """Create the tables if they don't exist. Safe to call on every startup."""
     with _lock:
         with connect() as c:
             c.executescript(SCHEMA)
@@ -83,6 +86,7 @@ def upsert_user(user_id: str, timezone: str = "UTC") -> str:
 
 
 def get_user_timezone(user_id: str):
+    """Return the user's timezone, or None if the user doesn't exist."""
     with connect() as c:
         row = c.execute("SELECT timezone FROM users WHERE user_id=?", (user_id,)).fetchone()
     return row["timezone"] if row else None
@@ -90,10 +94,13 @@ def get_user_timezone(user_id: str):
 
 # ------------------------------------------------------------- reminders
 def row_to_dict(r) -> dict:
+    """Convert a sqlite3.Row into a plain dict (what the API returns)."""
     return {k: r[k] for k in r.keys()}
 
 
 def create_reminder(user_id, title, note, due_local, repeat, timezone, due_utc) -> dict:
+    """Insert a new reminder as pending and return it as a dict.
+    due_local is the wall-clock time; due_utc is the matching instant."""
     with _lock:
         with connect() as c:
             cur = c.execute(
@@ -106,6 +113,7 @@ def create_reminder(user_id, title, note, due_local, repeat, timezone, due_utc) 
 
 
 def get_reminder(rid: int, user_id: str = None):
+    """Return one reminder by id, or None. Scoped to user_id when given."""
     with connect() as c:
         if user_id:
             r = c.execute("SELECT * FROM reminders WHERE id=? AND user_id=?", (rid, user_id)).fetchone()
@@ -115,6 +123,9 @@ def get_reminder(rid: int, user_id: str = None):
 
 
 def list_reminders(user_id: str, status: str = None):
+    """Return the user's reminders as dicts, ordered by the filter:
+    'pending' by soonest due, 'done' by most recently completed, None for all.
+    When listing all, pending reminders come before done ones."""
     with connect() as c:
         if status == "done":
             rows = c.execute(
@@ -135,6 +146,8 @@ def list_reminders(user_id: str, status: str = None):
 
 
 def update_reminder(rid: int, user_id: str, fields: dict):
+    """Apply the given column → value fields and return the updated reminder.
+    An empty fields dict just reads the current row; returns None if not found."""
     if not fields:
         return get_reminder(rid, user_id)
     sets = ", ".join(f"{k}=?" for k in fields)
@@ -149,6 +162,7 @@ def update_reminder(rid: int, user_id: str, fields: dict):
 
 
 def delete_reminder(rid: int, user_id: str) -> bool:
+    """Delete the reminder; return True if a row was removed, False if it didn't exist."""
     with _lock:
         with connect() as c:
             cur = c.execute("DELETE FROM reminders WHERE id=? AND user_id=?", (rid, user_id))
@@ -156,7 +170,8 @@ def delete_reminder(rid: int, user_id: str) -> bool:
 
 
 def list_due_reminders(now_iso: str = None):
-    """Reminders that are pending and whose due_utc has passed (fire-late is fine)."""
+    """Pending reminders whose due_utc has passed, soonest first — the input to
+    each scheduler tick (a missed due time fires late, it is never dropped)."""
     now_iso = now_iso or utcnow()
     with connect() as c:
         rows = c.execute(
@@ -168,7 +183,8 @@ def list_due_reminders(now_iso: str = None):
 
 # --------------------------------------------------------------- devices
 def upsert_device(user_id, endpoint, p256dh, auth_secret):
-    """Register (or re-register) a device for push delivery."""
+    """Register (or re-register) a device for push delivery, keyed by its
+    push endpoint. Re-subscribing the same device updates its keys in place."""
     with _lock:
         with connect() as c:
             c.execute(
@@ -180,12 +196,14 @@ def upsert_device(user_id, endpoint, p256dh, auth_secret):
 
 
 def delete_device(endpoint: str):
+    """Delete a device by its push endpoint (used when the relay reports it dead)."""
     with _lock:
         with connect() as c:
             c.execute("DELETE FROM devices WHERE endpoint=?", (endpoint,))
 
 
 def list_devices(user_id: str):
+    """Return every device registered to the user (the push notification targets)."""
     with connect() as c:
         rows = c.execute("SELECT * FROM devices WHERE user_id=?", (user_id,)).fetchall()
         return [row_to_dict(r) for r in rows]
