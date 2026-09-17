@@ -8,7 +8,9 @@ that has several names), that is a bug: fix it here first, then in the code.
 
 > This document holds **domain language only**. Engineering conventions —
 > docstrings, commit style, the branch/PR workflow, how to run the tests —
-> live in [`AGENTS.md`](../AGENTS.md).
+> live in [`AGENTS.md`](../AGENTS.md). Explanations of the technologies used
+> (FastAPI, Web Push/VAPID, service workers, Caddy, …) live in
+> [`learning/`](learning/README.md).
 
 > Naming rules of thumb
 > - **One concept = one word.** No near-synonyms (`add` vs `create`, `tz` vs `timezone`).
