@@ -12,6 +12,10 @@ naming anything new.
   reviews, asks questions, and merges — the merge is the owner's call.
 - Small, focused changes beat big rewrites. If a change is large, say so in
   the PR description.
+- **Keep scratch files out of the repo.** Verification artifacts (API dumps,
+  logs, throwaway scripts) belong outside the working tree — never let
+  `git add -A` sweep them in. Check `git status` before committing, and confirm
+  the file count matches what you actually changed.
 - Everything in the repo (code, docs, comments, commit messages) is English.
 
 ## Code conventions
