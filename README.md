@@ -33,6 +33,8 @@ FastAPI + SQLite + stdlib `threading` scheduler (backend) · vanilla JS PWA
 app/            FastAPI backend (db, scheduler, web-push, routes)
 static/         PWA: index.html, app.js, style.css, sw.js, manifest, icons
 scripts/        gen_icons.py (regenerate PWA icons), smoke_test.py (API tests)
+docs/           glossary.md (vocabulary) + learning/ (getting up to speed)
+AGENTS.md       instructions for AI agents working in this repo
 Dockerfile, docker-compose.yml, Caddyfile   deployment
 ```
 
@@ -79,8 +81,8 @@ for it automatically.
 
 4. **Get the code on the VPS** and configure it:
    ```bash
-   git clone https://Muhazerin:YOUR_GITHUB_TOKEN@github.com/Muhazerin/remindly.git
-   cd remindly
+   git clone https://Muhazerin:YOUR_GITHUB_TOKEN@github.com/Muhazerin/reminder.git
+   cd reminder
    cp .env.example .env
    nano .env      # APP_PASSWORD = a strong password, DOMAIN = remindly.duckdns.org
    ```
@@ -104,11 +106,11 @@ for it automatically.
 
 | Method | Path                          | Body / notes                                  |
 |--------|-------------------------------|-----------------------------------------------|
-| POST   | `/api/login`                  | `{password, tz}` → token                      |
-| GET    | `/api/me` · PUT `/api/me`     | get / set timezone (`{tz: "Asia/Singapore"}`) |
+| POST   | `/api/login`                  | `{password, timezone}` → token               |
+| GET    | `/api/me` · PUT `/api/me`     | get / set timezone (`{timezone: "Asia/Singapore"}`) |
 | GET    | `/api/reminders?status=`      | `pending` \| `done` \| `all`                  |
-| POST   | `/api/reminders`              | `{title, due_local, tz, repeat?, note?}`      |
-| PATCH  | `/api/reminders/{id}`         | partial update (title/note/due_local/repeat/tz/status) |
+| POST   | `/api/reminders`              | `{title, due_local, timezone, repeat?, note?}` |
+| PATCH  | `/api/reminders/{id}`         | partial update (title/note/due_local/repeat/timezone/status) |
 | DELETE | `/api/reminders/{id}`         |                                               |
 | POST   | `/api/reminders/{id}/snooze`  | `{minutes}` (pending only)                    |
 | GET    | `/api/push/vapid-public-key`  | for the PWA to subscribe                      |
@@ -116,7 +118,9 @@ for it automatically.
 | POST   | `/api/push/test`              | send a test push to all devices               |
 
 `due_local` is a naive wall-clock time in the client's timezone, e.g.
-`2026-09-06T21:30`; the server converts to UTC for storage and scheduling.
+`2026-09-06T21:30`; the server converts to UTC (`due_utc`) for storage and
+scheduling. JSON field names follow the vocabulary in `docs/glossary.md`
+(e.g. `timezone`, never `tz`).
 
 ## Security notes
 
