@@ -58,9 +58,9 @@ def next_occurrence(due_local: str, repeat: str, timezone: str, now_utc: datetim
     # The anchor stays the base for the day clamp, and at most two candidates
     # need checking: the first may already be <= now when today is later in the
     # month than the anchor's day, and then the following month is the answer.
-    # TODO(Chan): revisit this when the brain is fresh — ask the agent for the
-    # walkthrough of why two candidate months are enough (and why the old
-    # 600-iteration loop could only ever agree with this or give up).
+    # TODO: revisit this explanation — ask the agent for the walkthrough of why
+    # two candidate months are enough (and why the old 600-iteration loop could
+    # only ever agree with this or give up).
     if repeat == "monthly":
         months = max(1, (now_local.year - first.year) * 12 + (now_local.month - first.month))
         for k in (months, months + 1):
