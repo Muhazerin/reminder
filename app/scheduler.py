@@ -24,6 +24,15 @@ from . import push
 log = logging.getLogger("scheduler")
 
 
+def _add_months(anchor: datetime, months: int) -> datetime:
+    """Return anchor shifted by N calendar months, clamping the day to the target
+    month's length (31 Jan + 1 month -> 28/29 Feb). The day always comes from the
+    original anchor, so a 31st anchor stays a "31st" rule."""
+    y, m = anchor.year, anchor.month - 1 + months
+    y, m = y + m // 12, m % 12 + 1
+    return datetime(y, m, min(anchor.day, calendar.monthrange(y, m)[1]), anchor.hour, anchor.minute)
+
+
 def next_occurrence(due_local: str, repeat: str, timezone: str, now_utc: datetime = None) -> str:
     """Advance a repeat rule to the next occurrence strictly after now.
 
@@ -35,28 +44,30 @@ def next_occurrence(due_local: str, repeat: str, timezone: str, now_utc: datetim
     first = datetime.fromisoformat(due_local)
     now_local = now_utc.astimezone(zone).replace(tzinfo=None)  # naive local now
 
-    if repeat == "daily":
-        n = 1
-        while first + timedelta(days=n) <= now_local and n < 4000:
-            n += 1
-        return (first + timedelta(days=n)).replace(tzinfo=zone).astimezone(UTC).isoformat()
+    # Fixed-length periods (days, weeks): one calculation instead of a loop.
+    # `//` between timedeltas is floor division — how many whole periods fit
+    # between the anchor and now — so adding 1 gives the first occurrence
+    # strictly after now. max(1, …) keeps the rule that the occurrence which
+    # just fired is never returned again (or it would re-fire every tick).
+    if repeat in ("daily", "weekly"):
+        period = timedelta(days=1) if repeat == "daily" else timedelta(weeks=1)
+        n = max(1, (now_local - first) // period + 1)
+        return (first + n * period).replace(tzinfo=zone).astimezone(UTC).isoformat()
 
-    if repeat == "weekly":
-        n = 1
-        while first + timedelta(weeks=n) <= now_local and n < 1000:
-            n += 1
-        return (first + timedelta(weeks=n)).replace(tzinfo=zone).astimezone(UTC).isoformat()
-
+    # Months are not a fixed length, so count calendar months instead of looping.
+    # The anchor stays the base for the day clamp, and at most two candidates
+    # need checking: the first may already be <= now when today is later in the
+    # month than the anchor's day, and then the following month is the answer.
+    # TODO(Chan): revisit this when the brain is fresh — ask the agent for the
+    # walkthrough of why two candidate months are enough (and why the old
+    # 600-iteration loop could only ever agree with this or give up).
     if repeat == "monthly":
-        y, m = first.year, first.month
-        for _ in range(600):
-            m += 1
-            if m > 12:
-                m, y = 1, y + 1
-            day = min(first.day, calendar.monthrange(y, m)[1])  # clamp Jan 31 -> Feb 28
-            cand = datetime(y, m, day, first.hour, first.minute)
+        months = max(1, (now_local.year - first.year) * 12 + (now_local.month - first.month))
+        for k in (months, months + 1):
+            cand = _add_months(first, k)
             if cand > now_local:
                 return cand.replace(tzinfo=zone).astimezone(UTC).isoformat()
+
     return None
 
 
